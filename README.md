@@ -25,15 +25,15 @@ You can install the required packages using pip:
 
 ```bash
 pip install requests Pillow pandas numpy geopy
-
+```
 ## Usage
 ```bash
 python radarska_parser.py -n <location_name> -l <location_address> -r <radius>
-
+```
 ```bash
 python script.py -n "Existing Location Name"
-
+```
 
 ```bash
 python script.py -n "New Location Name" -l "123 Main St, Ljubljana, Slovenia" -r 5
-
+```
