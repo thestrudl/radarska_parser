@@ -1,3 +1,5 @@
-pandas
 requests
+shutil
+Pillow
+mysql-connector-python
 geopy
