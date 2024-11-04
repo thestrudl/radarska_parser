@@ -73,6 +73,9 @@ CREATE TABLE radar_precipitation (
  the following parameters with your MySQL database information:
 
  db_host="localhost"        # Database host
+
  db_user="radar_user"       # Database username
+ 
  db_password="radar_password"  # Database password
+ 
  db_name="radar_db"         # Database name
