@@ -36,6 +36,16 @@ Run the script using the following command:
 ./bin/python3 radar_main.py [-h] [-a NAME LOCATION RADIUS] [-c NAME] [-p NAME]
 ```
 
+Add location:
+```bash
+./bin/python3 radar_main.py -a "friendly name" "address" "radius in km for storm alert"
+```
+
+Run continus logging for location or multiple ones
+```bash
+./bin/python3 radar_main.py -p "friendly name 1" "friendly name 2"
+```
+
 ## Options
 
   - -h, --help Show this help message and exit.

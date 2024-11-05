@@ -26,27 +26,28 @@ class RadarApp:
             print(f"No location found with the name '{name}'.")
             return None
 
-    def check_and_log_precipitation(self, name):
-        """Fetch precipitation data for a location and log it in the database."""
-        location_data = self.select_location(name)
-        if not location_data:
-            return
+    def check_and_log_precipitation(self, names):
+        """Fetch precipitation data for multiple locations and log it in the database."""
+        for name in names:
+            location_data = self.select_location(name)
+            if not location_data:
+                continue
 
-        x, y, radius = location_data['x'], location_data['y'], location_data['radius']
-        radar_image = self.analyzer.download_radar_image()
+            x, y, radius = location_data['x'], location_data['y'], location_data['radius']
+            radar_image = self.analyzer.download_radar_image()
 
-        storm_flag, precipitation = self.analyzer.read_pixel(radar_image, x, y, radius)
-        self.db.append_precipitation_data(name, precipitation, datetime.now())
+            storm_flag, precipitation = self.analyzer.read_pixel(radar_image, x, y, radius)
+            self.db.append_precipitation_data(name, precipitation, datetime.now())
 
-        if storm_flag:
-            print("Storm detected at location:", name)
-        else:
-            print("No storm detected at location:", name)
+            if storm_flag:
+                print("Storm detected at location:", name)
+            else:
+                print("No storm detected at location:", name)
 
-    def run_periodic_check(self, location_name, interval_minutes=5):
-        """Run the precipitation check for a location every `interval_minutes`."""
+    def run_periodic_check(self, location_names, interval_minutes=5):
+        """Run the precipitation check for multiple locations every `interval_minutes`."""
         while True:
-            self.check_and_log_precipitation(location_name)
+            self.check_and_log_precipitation(location_names)
             time.sleep(interval_minutes * 60)
 
 
@@ -56,14 +57,13 @@ if __name__ == "__main__":
     )
     parser.add_argument("-a", "--add", nargs=3, metavar=("NAME", "LOCATION", "RADIUS"),
                         help="Add a new location with name, location, and radius.")
-    parser.add_argument("-c", "--check", type=str, metavar="NAME",
-                        help="Check precipitation for a given location name.")
-    parser.add_argument("-p", "--periodic", type=str, metavar="NAME",
-                        help="Run periodic precipitation logging for a location every 5 minutes.")
+    parser.add_argument("-c", "--check", nargs='+', metavar="NAME",
+                        help="Check precipitation for one or more location names.")
+    parser.add_argument("-p", "--periodic", nargs='+', metavar="NAME",
+                        help="Run periodic precipitation logging for one or more locations every 5 minutes.")
 
     args = parser.parse_args()
     app = RadarApp(db_host="localhost", db_user="radar_user", db_password="radar_password", db_name="radar_db")
-
 
     if args.add:
         name, location, radius = args.add

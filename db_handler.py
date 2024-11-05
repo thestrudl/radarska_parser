@@ -9,6 +9,7 @@ class DBHandler:
                 user=user,
                 password=password,
                 database=database
+                #ssl_disabled=True # Uncomment if you have issues with connection to DB
             )
             if self.connection.is_connected():
                 print("Connected to MySQL database")
