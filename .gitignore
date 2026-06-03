@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+radar_image/
+data/
+*.npy
+.venv/
+venv/
+
+# Local-only deploy overrides (host-specific, not for the repo)
+docker-compose.traefik.yml
+docker-compose.override.yml

@@ -1,91 +1,98 @@
-# Slovenian Radar Data Storm Detector
+# Slovenia Radar Precipitation Service
 
-This Python script parses Slovenian radar data and detects storms based on specified locations. Users can input location names or addresses, and if the location is not already in the system, it can be added for future use.
+A Dockerized service that continuously ingests the [ARSO](https://meteo.arso.gov.si)
+Slovenia weather-radar image, decodes it into precipitation (mm/h), and stores a
+queryable history in **TimescaleDB**. It exposes a documented **HTTP API** (with Swagger
+UI) and a **map GUI** where you can click any point (or search an address) to see that
+location's past precipitation. It also collects surface weather observations
+(temperature, pressure, humidity, …) to serve as features for a future
+precipitation-prediction model.
 
-## Features
+## Architecture
 
-- Download radar images for storm detection.
-- Check for storms based on pixel values in the radar image.
-- Store and manage locations in mysql database
-- Geocode new location addresses to get their coordinates.
-- Flexible radius setting for storm detection.
-- Log historic precipitation data of certain location
+| Service     | What it does                                                                 |
+|-------------|------------------------------------------------------------------------------|
+| `db`        | TimescaleDB (Postgres). Schema/hypertables created from `db/init.sql`.        |
+| `ingestor`  | Every `INGEST_INTERVAL_MINUTES`: downloads radar GIF + ARSO weather XML, decodes, archives full-res frames, writes precipitation grid, named-location readings, and weather observations. |
+| `api`       | FastAPI + Uvicorn. REST API, Swagger at `/docs`, serves the map GUI at `/`.   |
 
-## Requirements
+Data stored:
+- **`precip_grid`** — coarse-grid precipitation per timestamp (powers click-anywhere queries).
+- **`location_readings`** — precipitation/storm flag for registered named locations.
+- **`radar_frames`** — archived full-resolution frames (GIF + NumPy array) on a volume = ML training corpus.
+- **`weather_obs`** — per-station temperature, pressure, humidity, dew point, wind.
 
-- Python 3.x
-- Required packages:
-  - `argparse`
-  - `requests`
-  - `Pillow`
-  - `pandas`
-  - `numpy`
-  - `geopy`
-  - 
-
-You can install the required packages using pip:
-
-```bash
-pip3 install -r requirements.txt
-```
-## Usage
-
-Run the script using the following command:
+## Quick start
 
 ```bash
-./bin/python3 radar_main.py [-h] [-a NAME LOCATION RADIUS] [-c NAME] [-p NAME]
+cp .env.example .env        # adjust credentials/intervals if you like
+docker compose up --build
 ```
 
-Add location:
+Then open:
+- **Map GUI:** http://localhost:8000/
+- **Swagger / OpenAPI docs:** http://localhost:8000/docs
+- **Health:** http://localhost:8000/health
+
+The ingestor runs one cycle immediately on startup, then every
+`INGEST_INTERVAL_MINUTES` (default 10). Precipitation history accumulates over time —
+right after first launch the graphs will be sparse until several cycles have run.
+
+## API overview
+
+| Method & path                         | Description                                            |
+|---------------------------------------|--------------------------------------------------------|
+| `GET /health`                         | Liveness + last ingest timestamp + frame count         |
+| `GET /locations`                      | List registered locations                              |
+| `POST /locations`                     | Add a location by address (geocoded) + alert radius    |
+| `GET /locations/{name}`               | Location details                                       |
+| `GET /locations/{name}/history`       | Precipitation series for a named location              |
+| `GET /precip/history?lat&lon`         | **Click-anywhere** precipitation series for a point    |
+| `GET /precip/by-address?address=`     | Precipitation series for a geocoded address            |
+| `GET /radar/latest`                   | Most recent raw radar GIF                              |
+| `GET /radar/meta`                     | Map bounds + timestamp for the radar overlay           |
+| `GET /radar/overlay.png?time=`        | Transparent precipitation overlay (latest, or nearest `time`) |
+| `GET /weather/history?lat&lon`        | Weather series from the nearest station                |
+
+All history endpoints accept optional `from` and `to` ISO-8601 query params
+(default: last 24 h).
+
+Example:
 ```bash
-./bin/python3 radar_main.py -a "friendly name" "address" "radius in km for storm alert"
+curl "http://localhost:8000/precip/history?lat=46.05&lon=14.51"
+curl -X POST http://localhost:8000/locations \
+  -H "Content-Type: application/json" \
+  -d '{"name":"home","address":"Ljubljana, Slovenia","radius_km":5}'
 ```
 
-Run continus logging for location or multiple ones
-```bash
-./bin/python3 radar_main.py -p "friendly name 1" "friendly name 2"
-```
+## Configuration
 
-## Options
+All settings come from environment variables (see `.env.example`):
 
-  - -h, --help Show this help message and exit.
-  - -a, --add NAME LOCATION RADIUS Add a new location with the specified name, location, and radius.
-  - -c, --check NAME Check precipitation for a given location name.
-  - -p, --periodic NAME Run periodic precipitation logging for a location every 5 minutes.
+| Variable                  | Default | Meaning                                        |
+|---------------------------|---------|------------------------------------------------|
+| `INGEST_INTERVAL_MINUTES` | `10`    | Minutes between radar/weather polls            |
+| `GRID_CELL_PIXELS`        | `4`     | Downsample factor; bigger = coarser grid, less storage |
+| `RADAR_IMAGE_URL`         | ARSO    | Source radar GIF                               |
+| `WEATHER_XML_URL`         | ARSO    | Source observations XML                        |
+| `FRAMES_DIR`              | `/data/frames` | Where full-res frames are archived       |
 
-## MySQL Database Setup
+## Future: precipitation prediction (ML)
 
-To use this project, you need to create the necessary database tables in MySQL. Below are the SQL commands to create the required tables.
+This release lays the groundwork for an "ML predictive radar" without training a model yet:
+- **`radar_frames`** archives every distinct full-resolution frame (deduped by hash) as a
+  NumPy array — a sequence suitable for training a spatiotemporal model.
+- **`weather_obs`** collects temperature / pressure / humidity / wind per station.
+- **Season** is derivable from each row's `time`, so no extra collection is needed.
 
-```mysql
-CREATE TABLE locations (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) UNIQUE NOT NULL,
-    location VARCHAR(100),
-    lat FLOAT,
-    lon FLOAT,
-    x FLOAT,
-    y FLOAT,
-    radius FLOAT,
-    radiuspx FLOAT
-);
+Once enough data has accumulated, a model can be trained on the frame sequence + weather
+features to forecast precipitation a few hours ahead.
 
-CREATE TABLE radar_precipitation (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    location_name VARCHAR(50),
-    precipitation FLOAT,
-    timestamp DATETIME,
-    FOREIGN KEY (location_name) REFERENCES locations(name)
-);
-```
- Note: Make sure to edit the database credentials in radar_main.py - main of radar_main.py:
- Locate the RadarApp class instantiation in radar_main.py and update
- the following parameters with your MySQL database information:
+## Notes
 
- db_host="localhost"        # Database host
-
- db_user="radar_user"       # Database username
- 
- db_password="radar_password"  # Database password
- 
- db_name="radar_db"         # Database name
+- The original MySQL CLI (`radar_main.py`, `radar_analyzer.py`, `db_handler.py`) has been
+  superseded by the `app/` package and removed; its radar-decode, coordinate-transform,
+  and geocoding logic was ported and hardened (retries, bounds-safe sampling, fixed
+  geocoding None-handling). The old files remain in git history.
+- Storage: Slovenia's radar image is small; archived frames and TimescaleDB compression
+  keep long-term storage to a few GB/year.
